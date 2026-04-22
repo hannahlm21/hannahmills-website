@@ -10,7 +10,7 @@ website:
       - about.qmd
       - text: "Resume"
         href: docs/Resume.pdf
-      - text: "Cover Letter"
+      - text: "CoverLetter"
         href: docs/Cover Letter.pdf
 
 
