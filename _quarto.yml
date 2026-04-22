@@ -9,8 +9,10 @@ website:
         text: Home
       - about.qmd
       - text: "Resume"
-      href: docs/Resume/pdf
-      
+        href: docs/Resume.pdf
+      - text: "Cover Letter"
+        href: docs/Cover Letter.pdf
+
 
 format:
   html:
