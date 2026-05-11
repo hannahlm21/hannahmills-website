@@ -1,0 +1,210 @@
+---
+title: "Sample Analysis: The Bechdel Test (Expanded)"
+author: "Hannah Mills"
+date: "2026-05-11"
+format:
+  html:
+    code-fold: true
+    code-tools: true
+    df-print: paged
+---
+
+# Introduction
+
+For my 2026 Winter Term class, we had to do an individual project using a dataset to create interesting data visualizations and learning something new. I chose to take a movie dataset, and use plotly and a shiny dashboard to analyze movies that pass what is known as the Bechdel test. Most importantly, disproving the fact that films containing significant female leads or characters tend to perform worse at a box office, or generate a lower ROI. 
+
+For this sample analysis, I chose to expand on this by implementing machine learning techniques to predict whether a movie will or will not pass this test based on a series of features. 
+
+# Dataset Variables
+
+
+
+# Packages
+
+The main packages used for this analysis includes pandas, numpy, seaborn, and importantly, sklearn. I also imported an xgboost package to run an XGB classifier which you'll see later.
+
+```{python}
+import pandas as pd
+import numpy as np
+import seaborn as sns
+import matplotlib.pyplot as plt
+from sklearn.compose import ColumnTransformer
+from sklearn.pipeline import Pipeline
+from sklearn.impute import SimpleImputer
+from sklearn.preprocessing import OneHotEncoder, LabelEncoder, StandardScaler, FunctionTransformer
+from sklearn.ensemble import GradientBoostingClassifier, RandomForestClassifier
+from sklearn.metrics import classification_report, confusion_matrix, ConfusionMatrixDisplay, balanced_accuracy_score
+from sklearn.model_selection import GridSearchCV, RepeatedStratifiedKFold, train_test_split
+from sklearn.tree import DecisionTreeClassifier, plot_tree
+from sklearn.metrics import accuracy_score
+from xgboost import XGBClassifier
+```
+
+# Data Cleaning and Loading
+
+I loaded the dataset that I downloaded from FiveThirtyEight. I then dropped unneeded or unhelpful columns. Some of these columns included ID's or numbers, or columns that had too much text to be useful (plot, for example).
+
+I also decided to drop rows with missing values. We have enough rows that we can drop them. This is important because you can't necessariy impute a rating or a budget, since they're so widespread. 
+
+I additionally cleaned the runtime and imdb_votes column by dropping the word "min" and removing the comma, respectively.
+
+Finally, I mapped from the binary column 1 to passing and 0 to failing
+
+```{python}
+# Load dataset
+
+movies_raw = pd.read_csv('movies.csv')
+
+#Drop uneeded columns
+
+cols_to_drop = ['imdb', 'title', 'test', 'clean_test', 'code', 'imdb_id', 'response', 'poster', 'type', 'plot', 'awards', 'error', 'period_code', 'decade_code', 'actors', 'director', 'budget', 'domgross', 'intgross', 'actors', 'writer', 'released']
+
+movies_clean = movies_raw.drop(columns=cols_to_drop)
+
+# Handle missing values - drop them. We have enough rows. Should not impute these
+
+movies_clean = movies_clean.dropna(subset=['imdb_rating', 'genre', 'runtime'])
+
+# Clean runtime column by dropping min and imdb_votes by removing comma
+
+movies_clean['runtime'] = movies_clean['runtime'].str.extract(r'(\d+)').astype(int)
+movies_clean['imdb_votes'] = movies_clean['imdb_votes'].str.replace(',', '').astype(float)
+
+# Map PASS to 1 and FAIL to 0 
+
+movies_clean['target'] = movies_clean['binary'].map({'PASS': 1, 'FAIL': 0})
+```
+
+# Exploratory Data Analysis (EDA)
+
+```{python}
+# First let's take a count to ensure that our outcomes are somewhat balanced, which they are.
+
+sns.countplot(data=movies_clean, x='binary')
+plt.title('Bechdel Test Pass Rate', fontsize=14)
+plt.ylabel('Movie Count')
+plt.xlabel('Pass or Fail')
+plt.grid(alpha=0.3)
+```
+
+```{python}
+trend_df = movies_clean.groupby('year')['binary'].value_counts(normalize=True).unstack().reset_index()
+trend_df['pass_percentage'] = trend_df['PASS'] * 100
+
+sns.lineplot(data=trend_df, x='year', y='pass_percentage', color='#18bc9c', linewidth=2)
+plt.title('Pass Rate Over Time', fontsize=14)
+plt.ylabel('Percentage of Movies Passing (%)')
+plt.xlabel('Year')
+plt.grid(alpha=0.3)
+```
+
+```{python}
+genre_df = movies_clean.dropna(subset=['genre', 'binary']).copy()
+genre_df['genre'] = genre_df['genre'].str.split(', ')
+genre_exploded = genre_df.explode('genre')
+
+genre_stats = genre_exploded.groupby('genre')['binary'].value_counts(normalize=True).unstack().reset_index()
+genre_counts = genre_exploded['genre'].value_counts().reset_index()
+genre_counts.columns = ['genre', 'count']
+
+genre_analysis = pd.merge(genre_stats, genre_counts, on='genre')
+genre_analysis = genre_analysis[genre_analysis['count'] > 20].sort_values('PASS', ascending=True)
+
+sns.barplot(data=genre_analysis, y='genre', x='PASS', palette='viridis')
+plt.title('Bechdel Pass Rate by Genre (n > 20)', fontsize=14)
+plt.xlabel('Pass Rate')
+plt.ylabel('Genre')
+```
+
+# Preprocessing
+
+
+```{python}
+cat_cols = ['rated', 'language', 'country', 'genre']
+
+num_cols = ['year', 'budget_2013', 'domgross_2013', 'intgross_2013', 'metascore', 'imdb_rating', 'runtime', 'imdb_votes']
+
+numeric_transformer = Pipeline(steps=[
+    ('imputer', SimpleImputer(strategy='median')),
+    ('log', FunctionTransformer(np.log1p, feature_names_out='one-to-one')),
+    ('scaler', StandardScaler())
+])
+
+categorical_transformer = Pipeline(steps=[
+    ('imputer', SimpleImputer(strategy='constant', fill_value='missing')),
+    ('onehot', OneHotEncoder(handle_unknown='ignore'))
+])
+
+preprocessor = ColumnTransformer(
+    transformers=[
+        ('num', numeric_transformer, num_cols),
+        ('cat', categorical_transformer, cat_cols)
+    ]
+)
+```
+
+# Splitting Data
+
+
+```{python}
+X = movies_clean[cat_cols + num_cols]
+y = movies_clean['target']
+
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=4025)
+```
+
+# Defining Models
+
+```{python}
+dtc_pipeline = Pipeline(steps=[
+    ('preprocessor', preprocessor),
+    ('classifier', DecisionTreeClassifier(random_state=4025))
+])
+
+#Fit pipeline
+
+dtc_pipeline.fit(X_train, y_train)
+
+#Create tree model
+
+tree_model = dtc_pipeline.named_steps['classifier']
+feature_names = dtc_pipeline.named_steps['preprocessor'].get_feature_names_out()
+
+#Display model
+
+plt.figure(figsize=(20,10))
+plot_tree(
+    tree_model,
+    feature_names = feature_names,
+    class_names=['Failed', 'Passed'],
+    filled=True,
+    rounded=True,
+    max_depth=3
+)
+
+plt.show()
+```
+
+
+```{python}
+rfc_pipeline = Pipeline(steps=[
+    ('preprocessor', preprocessor),
+    ('classifier', RandomForestClassifier(n_estimators=100, random_state=4025))
+])
+
+rfc_pipeline.fit(X_train, y_train)
+```
+
+
+```{python}
+xgb_pipeline = Pipeline(steps=[
+    ('preprocessor', preprocessor),
+    ('classifier', XGBClassifier(objective='multi:softmax', num_class=3))
+])
+
+xgb_pipeline.set_params(classifier=GradientBoostingClassifier())
+
+xgb_pipeline.fit(X_train, y_train)
+```
+
+# Tuning Models
