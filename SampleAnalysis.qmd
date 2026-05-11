@@ -37,6 +37,7 @@ from sklearn.metrics import classification_report, confusion_matrix, ConfusionMa
 from sklearn.model_selection import GridSearchCV, RepeatedStratifiedKFold, train_test_split
 from sklearn.tree import DecisionTreeClassifier, plot_tree
 from sklearn.metrics import accuracy_score
+from sklearn.metrics import f1_score, accuracy_score, precision_score, recall_score
 from xgboost import XGBClassifier
 ```
 
@@ -118,7 +119,6 @@ plt.ylabel('Genre')
 
 # Preprocessing
 
-
 ```{python}
 cat_cols = ['rated', 'language', 'country', 'genre']
 
@@ -144,7 +144,6 @@ preprocessor = ColumnTransformer(
 ```
 
 # Splitting Data
-
 
 ```{python}
 X = movies_clean[cat_cols + num_cols]
@@ -185,7 +184,6 @@ plot_tree(
 plt.show()
 ```
 
-
 ```{python}
 rfc_pipeline = Pipeline(steps=[
     ('preprocessor', preprocessor),
@@ -194,7 +192,6 @@ rfc_pipeline = Pipeline(steps=[
 
 rfc_pipeline.fit(X_train, y_train)
 ```
-
 
 ```{python}
 xgb_pipeline = Pipeline(steps=[
@@ -207,4 +204,120 @@ xgb_pipeline.set_params(classifier=GradientBoostingClassifier())
 xgb_pipeline.fit(X_train, y_train)
 ```
 
+## Comparison BEFORE Tuning
+
+```{python}
+def get_metrics(model, X, y):
+    preds = model.predict(X)
+    return {
+        'Accuracy': accuracy_score(y, preds),
+        'F1-Macro': f1_score(y, preds, average='macro'),
+        'Precision (Pass)': precision_score(y, preds),
+        'Recall (Pass)': recall_score(y, preds)
+    }
+
+untuned_comparison = pd.DataFrame({
+    'Decision Tree': get_metrics(dtc_pipeline, X_test, y_test),
+    'Random Forest (Untuned)': get_metrics(rfc_pipeline, X_test, y_test),
+    'XGBoost (Untuned)': get_metrics(xgb_pipeline, X_test, y_test)
+}).T
+
+print(untuned_comparison.round(3))
+```
+
 # Tuning Models
+
+```{python}
+#Define grid
+
+param_grid = {
+    'classifier__max_features': [None, 'sqrt', 'log2', 0.2, 0.5, 0.8]
+}
+
+#Begin grid search
+
+cv_strategy1 = RepeatedStratifiedKFold(n_splits=5, n_repeats=3, random_state=4025)
+
+grid_search = GridSearchCV(
+    estimator=rfc_pipeline, 
+    param_grid=param_grid, 
+    cv=cv_strategy1, 
+    scoring='accuracy',
+    n_jobs=-1
+)
+
+#Fit and print best scores and max features
+
+grid_search.fit(X_train, y_train)
+
+print(f"Best Score: {grid_search.best_score_:.2%}")
+print(f"Best max_features: {grid_search.best_params_['classifier__max_features']}")
+```
+
+
+```{python}
+#Make stratified k fold and param grid, run grid search
+
+cv_strategy = RepeatedStratifiedKFold(n_splits=5, n_repeats=3, random_state=4025)
+
+param_grid = {
+    'classifier__n_estimators': [50, 100, 200, 300],
+    'classifier__learning_rate': [0.05, 0.1, 0.2]
+}
+
+grid_search = GridSearchCV(
+    estimator=xgb_pipeline, 
+    param_grid=param_grid, 
+    cv=cv_strategy, 
+    scoring='f1_macro', 
+    n_jobs=-1,
+    verbose=1
+)
+
+grid_search.fit(X_train, y_train)
+
+#Find best parameters and fit the best model
+
+print(f"Best parameters: {grid_search.best_params_}")
+```
+
+# Generate Predictions
+
+```{python}
+dtc_pred = dtc_pipeline.predict(X_test)
+
+best_rfc_model = grid_search.best_estimator_
+best_rfc_pred = best_rfc_model.predict(X_test)
+
+best_xgb_model = grid_search.best_estimator_
+best_xgb_pred = best_xgb_model.predict(X_test)
+```
+
+# Model Comparison
+
+```{python}
+tuned_comparison = pd.DataFrame({
+    'Decision Tree': get_metrics(dtc_pipeline, X_test, y_test),
+    'Random Forest (Tuned)': get_metrics(best_rfc_model, X_test, y_test),
+    'XGBoost (Tuned)': get_metrics(best_xgb_model, X_test, y_test)
+}).T
+
+print(tuned_comparison.round(3))
+```
+
+# Confusion Matrix for Best Model
+
+Choosing Random Forest for simplicity
+
+```{python}
+cm = confusion_matrix(y_test, best_rfc_pred)
+
+fig, ax = plt.subplots(figsize=(8, 6))
+disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=['FAIL', 'PASS'])
+disp.plot(cmap='Blues', ax=ax, values_format='d')
+plt.title('Confusion Matrix for Random Forest')
+plt.grid(False)
+plt.show()
+```
+
+# Conclusion
