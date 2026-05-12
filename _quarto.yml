@@ -8,6 +8,9 @@ website:
       - href: index.qmd
         text: Home
       - about.qmd
+      - href: SampleAnalysis.qmd
+        text: "Sample Analysis"
+    right:
       - text: "Resume"
         href: docs/NEWResume.pdf
       - text: "Cover Letter"
@@ -21,6 +24,8 @@ format:
       - brand
     css: styles.css
     toc: true
+
+
 
 
 
