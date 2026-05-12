@@ -29,11 +29,9 @@ from sklearn.pipeline import Pipeline
 from sklearn.impute import SimpleImputer
 from sklearn.preprocessing import OneHotEncoder, LabelEncoder, StandardScaler, FunctionTransformer
 from sklearn.ensemble import GradientBoostingClassifier, RandomForestClassifier
-from sklearn.metrics import classification_report, confusion_matrix, ConfusionMatrixDisplay, balanced_accuracy_score
+from sklearn.metrics import classification_report, confusion_matrix, ConfusionMatrixDisplay, balanced_accuracy_score, f1_score, accuracy_score, precision_score, recall_score
 from sklearn.model_selection import GridSearchCV, RepeatedStratifiedKFold, train_test_split
 from sklearn.tree import DecisionTreeClassifier, plot_tree
-from sklearn.metrics import accuracy_score
-from sklearn.metrics import f1_score, accuracy_score, precision_score, recall_score
 from xgboost import XGBClassifier
 ```
 
@@ -100,8 +98,12 @@ plt.grid(alpha=0.3)
 ```
 
 ```{python}
+#Create a dataframe that groups movies passing by the year
+
 trend_df = movies_clean.groupby('year')['binary'].value_counts(normalize=True).unstack().reset_index()
 trend_df['pass_percentage'] = trend_df['PASS'] * 100
+
+#Create a line plot
 
 sns.lineplot(data=trend_df, x='year', y='pass_percentage', color='#18bc9c', linewidth=2)
 plt.title('Pass Rate Over Time', fontsize=14)
@@ -113,14 +115,17 @@ plt.grid(alpha=0.3)
 ```{python}
 #| warning: false
 
+# Create a dataframe that splits the genre into separate rows
 genre_df = movies_clean.dropna(subset=['genre', 'binary']).copy()
 genre_df['genre'] = genre_df['genre'].str.split(', ')
 genre_exploded = genre_df.explode('genre')
 
+#Now from each genre calculate how many pass in each genre
 genre_stats = genre_exploded.groupby('genre')['binary'].value_counts(normalize=True).unstack().reset_index()
 genre_counts = genre_exploded['genre'].value_counts().reset_index()
 genre_counts.columns = ['genre', 'count']
 
+#Filtering so that there are at least 20 movies in each genre
 genre_analysis = pd.merge(genre_stats, genre_counts, on='genre')
 genre_analysis = genre_analysis[genre_analysis['count'] > 20].sort_values('PASS', ascending=True)
 
@@ -139,6 +144,9 @@ For the numerical transformer, it first imputes missing values with the median, 
 For the categorical transformer, it imputes any missing values with the word "missing."
 
 ```{python}
+
+#Make a list of categorical and numerical features
+
 cat_cols = ['rated', 'country'] + list(genres_split.columns) + list(languages_split.columns)
 
 num_cols = ['year', 'budget_2013', 'domgross_2013', 'intgross_2013', 'metascore', 'imdb_rating', 'runtime', 'imdb_votes']
@@ -210,6 +218,8 @@ plt.show()
 ```{python}
 #| include: false
 
+# Fit random forest classifier pipeline and model
+
 rfc_pipeline = Pipeline(steps=[
     ('preprocessor', preprocessor),
     ('classifier', RandomForestClassifier(n_estimators=100, random_state=4025))
@@ -220,6 +230,8 @@ rfc_pipeline.fit(X_train, y_train)
 
 ```{python}
 #| include: false
+
+# Fit XGBoost pipeline and model
 
 xgb_pipeline = Pipeline(steps=[
     ('preprocessor', preprocessor),
@@ -234,6 +246,9 @@ xgb_pipeline.fit(X_train, y_train)
 ## Comparison BEFORE Tuning
 
 ```{python}
+
+#Create function that calcaulates the following scores from the models
+
 def get_metrics(model, X, y):
     preds = model.predict(X)
     return {
@@ -242,6 +257,9 @@ def get_metrics(model, X, y):
         'Precision (Pass)': precision_score(y, preds),
         'Recall (Pass)': recall_score(y, preds)
     }
+
+
+#Create a print a dataframe of results from untuned models
 
 untuned_comparison = pd.DataFrame({
     'Decision Tree': get_metrics(dtc_pipeline, X_test, y_test),
@@ -257,6 +275,7 @@ print(untuned_comparison.round(3))
 To tune the Random Forest and XGBoost models, I used a grid search. 
 
 ```{python}
+#| include: false
 #Define grid
 
 param_grid = {
@@ -282,6 +301,8 @@ grid_search.fit(X_train, y_train)
 
 
 ```{python}
+#| include: false
+#| 
 #Make stratified k fold and param grid, run grid search
 
 cv_strategy2 = RepeatedStratifiedKFold(n_splits=5, n_repeats=3, random_state=4025)
@@ -308,6 +329,9 @@ grid_search.fit(X_train, y_train)
 I then pulled the best model and parameters from the Random Forest and XGBoost model, and made predictions for the Decision Tree, Random Forest, and XGBoost model.
 
 ```{python}
+
+# Create predictions for tuned and best models (except for decision tree classifier)
+
 dtc_pred = dtc_pipeline.predict(X_test)
 
 best_rfc_model = grid_search.best_estimator_
@@ -321,12 +345,21 @@ best_xgb_pred = best_xgb_model.predict(X_test)
 
 Using the same function from the untuned models, I then recalled this to evaluate the now tuned models. Interestingly enough, the Random Forest and XGBoost models performed the same. 
 
+The model performs very well with Precision and Accuracy, but struggles with Recall. So, what does this mean in the context of my project?
+
+A high precision score but low recall score indicates that this model is more conservative or picky with its choices. The high precision indicates that the model has high credibility that when it labels it as pass, it passes. On the other hand, it has low recall, meaning it is missing many films that do pass the test. When the model claims it passes, it's right about 73% of the time. However, of all the movies that do pass, it only found about 49%. 
+
+Using this, we can say that it is much easier to determine whether a movie is going to fail, than it is going to pass. It's quite accurate when labeling it as passing, but struggles to catch all movies. 
+
 ```{python}
+
+#Print results
+
 tuned_comparison = pd.DataFrame({
     'Decision Tree': get_metrics(dtc_pipeline, X_test, y_test),
     'Random Forest (Tuned)': get_metrics(best_rfc_model, X_test, y_test),
     'XGBoost (Tuned)': get_metrics(best_xgb_model, X_test, y_test)
-}).T
+})
 
 print(tuned_comparison.round(3))
 ```

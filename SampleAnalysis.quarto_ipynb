@@ -1,0 +1,501 @@
+{
+  "cells": [
+    {
+      "cell_type": "markdown",
+      "metadata": {},
+      "source": [
+        "---\n",
+        "title: \"Sample Analysis: The Bechdel Test (Expanded)\"\n",
+        "author: \"Hannah Mills\"\n",
+        "date: \"2026-05-11\"\n",
+        "format:\n",
+        "  html:\n",
+        "    code-fold: true\n",
+        "    code-tools: true\n",
+        "    df-print: paged\n",
+        "---\n",
+        "\n",
+        "# Introduction\n",
+        "\n",
+        "For my 2026 Winter Term class, we had to do an individual project using a dataset to create interesting data visualizations and learning something new. I chose to take a movie dataset, and use plotly and a shiny dashboard to analyze movies that pass what is known as the Bechdel test. Most importantly, disproving the fact that films containing significant female leads or characters tend to perform worse at a box office, or generate a lower ROI. \n",
+        "\n",
+        "For this sample analysis, I chose to expand on this by implementing machine learning techniques to predict whether a movie will or will not pass this test based on a series of features. \n",
+        "\n",
+        "# Packages\n",
+        "\n",
+        "The main packages used for this analysis includes pandas, numpy, seaborn, and importantly, sklearn. I also imported an xgboost package to run an XGB classifier which you'll see later."
+      ],
+      "id": "82cc403c"
+    },
+    {
+      "cell_type": "code",
+      "metadata": {},
+      "source": [
+        "import pandas as pd\n",
+        "import numpy as np\n",
+        "import seaborn as sns\n",
+        "import matplotlib.pyplot as plt\n",
+        "from sklearn.compose import ColumnTransformer\n",
+        "from sklearn.pipeline import Pipeline\n",
+        "from sklearn.impute import SimpleImputer\n",
+        "from sklearn.preprocessing import OneHotEncoder, LabelEncoder, StandardScaler, FunctionTransformer\n",
+        "from sklearn.ensemble import GradientBoostingClassifier, RandomForestClassifier\n",
+        "from sklearn.metrics import classification_report, confusion_matrix, ConfusionMatrixDisplay, balanced_accuracy_score\n",
+        "from sklearn.model_selection import GridSearchCV, RepeatedStratifiedKFold, train_test_split\n",
+        "from sklearn.tree import DecisionTreeClassifier, plot_tree\n",
+        "from sklearn.metrics import accuracy_score\n",
+        "from sklearn.metrics import f1_score, accuracy_score, precision_score, recall_score\n",
+        "from xgboost import XGBClassifier"
+      ],
+      "id": "4f2936da",
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {},
+      "source": [
+        "# Data Cleaning and Loading\n",
+        "\n",
+        "I loaded the dataset that I downloaded from FiveThirtyEight. I then dropped unneeded or unhelpful columns. Some of these columns included ID's or numbers, or columns that had too much text to be useful (plot, for example).\n",
+        "\n",
+        "I also decided to drop rows with missing values. We have enough rows that we can drop them. This is important because you can't necessariy impute a rating or a budget, since they're so widespread. \n",
+        "\n",
+        "I additionally cleaned the runtime and imdb_votes column by dropping the word \"min\" and removing the comma, respectively.\n",
+        "\n",
+        "Finally, I mapped from the binary column 1 to passing and 0 to failing"
+      ],
+      "id": "39b5b6b7"
+    },
+    {
+      "cell_type": "code",
+      "metadata": {},
+      "source": [
+        "# Load dataset\n",
+        "\n",
+        "movies_raw = pd.read_csv('movies.csv')\n",
+        "\n",
+        "#Drop uneeded columns\n",
+        "\n",
+        "cols_to_drop = ['imdb', 'title', 'test', 'clean_test', 'code', 'imdb_id', 'response', 'poster', 'type', 'plot', 'awards', 'error', 'period_code', 'decade_code', 'actors', 'director', 'budget', 'domgross', 'intgross', 'actors', 'writer', 'released']\n",
+        "\n",
+        "movies_clean = movies_raw.drop(columns=cols_to_drop)\n",
+        "\n",
+        "# Handle missing values - drop them. We have enough rows. Should not impute these\n",
+        "\n",
+        "movies_clean = movies_clean.dropna(subset=['imdb_rating', 'genre', 'runtime'])\n",
+        "\n",
+        "# Clean runtime column by dropping min and imdb_votes by removing comma\n",
+        "\n",
+        "movies_clean['runtime'] = movies_clean['runtime'].str.extract(r'(\\d+)').astype(int)\n",
+        "movies_clean['imdb_votes'] = movies_clean['imdb_votes'].str.replace(',', '').astype(float)\n",
+        "\n",
+        "# Map PASS to 1 and FAIL to 0 \n",
+        "\n",
+        "movies_clean['target'] = movies_clean['binary'].map({'PASS': 1, 'FAIL': 0})"
+      ],
+      "id": "52605260",
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {},
+      "source": [
+        "# Exploratory Data Analysis (EDA)"
+      ],
+      "id": "307683eb"
+    },
+    {
+      "cell_type": "code",
+      "metadata": {},
+      "source": [
+        "# First let's take a count to ensure that our outcomes are somewhat balanced, which they are.\n",
+        "\n",
+        "sns.countplot(data=movies_clean, x='binary')\n",
+        "plt.title('Bechdel Test Pass Rate', fontsize=14)\n",
+        "plt.ylabel('Movie Count')\n",
+        "plt.xlabel('Pass or Fail')\n",
+        "plt.grid(alpha=0.3)"
+      ],
+      "id": "f861ee8a",
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "cell_type": "code",
+      "metadata": {},
+      "source": [
+        "trend_df = movies_clean.groupby('year')['binary'].value_counts(normalize=True).unstack().reset_index()\n",
+        "trend_df['pass_percentage'] = trend_df['PASS'] * 100\n",
+        "\n",
+        "sns.lineplot(data=trend_df, x='year', y='pass_percentage', color='#18bc9c', linewidth=2)\n",
+        "plt.title('Pass Rate Over Time', fontsize=14)\n",
+        "plt.ylabel('Percentage of Movies Passing (%)')\n",
+        "plt.xlabel('Year')\n",
+        "plt.grid(alpha=0.3)"
+      ],
+      "id": "8ab6eeba",
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "cell_type": "code",
+      "metadata": {},
+      "source": [
+        "genre_df = movies_clean.dropna(subset=['genre', 'binary']).copy()\n",
+        "genre_df['genre'] = genre_df['genre'].str.split(', ')\n",
+        "genre_exploded = genre_df.explode('genre')\n",
+        "\n",
+        "genre_stats = genre_exploded.groupby('genre')['binary'].value_counts(normalize=True).unstack().reset_index()\n",
+        "genre_counts = genre_exploded['genre'].value_counts().reset_index()\n",
+        "genre_counts.columns = ['genre', 'count']\n",
+        "\n",
+        "genre_analysis = pd.merge(genre_stats, genre_counts, on='genre')\n",
+        "genre_analysis = genre_analysis[genre_analysis['count'] > 20].sort_values('PASS', ascending=True)\n",
+        "\n",
+        "sns.barplot(data=genre_analysis, y='genre', x='PASS', palette='viridis')\n",
+        "plt.title('Bechdel Pass Rate by Genre (n > 20)', fontsize=14)\n",
+        "plt.xlabel('Pass Rate')\n",
+        "plt.ylabel('Genre')"
+      ],
+      "id": "92c3df64",
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {},
+      "source": [
+        "# Preprocessing"
+      ],
+      "id": "10b802e2"
+    },
+    {
+      "cell_type": "code",
+      "metadata": {},
+      "source": [
+        "cat_cols = ['rated', 'language', 'country', 'genre']\n",
+        "\n",
+        "num_cols = ['year', 'budget_2013', 'domgross_2013', 'intgross_2013', 'metascore', 'imdb_rating', 'runtime', 'imdb_votes']\n",
+        "\n",
+        "numeric_transformer = Pipeline(steps=[\n",
+        "    ('imputer', SimpleImputer(strategy='median')),\n",
+        "    ('log', FunctionTransformer(np.log1p, feature_names_out='one-to-one')),\n",
+        "    ('scaler', StandardScaler())\n",
+        "])\n",
+        "\n",
+        "categorical_transformer = Pipeline(steps=[\n",
+        "    ('imputer', SimpleImputer(strategy='constant', fill_value='missing')),\n",
+        "    ('onehot', OneHotEncoder(handle_unknown='ignore'))\n",
+        "])\n",
+        "\n",
+        "preprocessor = ColumnTransformer(\n",
+        "    transformers=[\n",
+        "        ('num', numeric_transformer, num_cols),\n",
+        "        ('cat', categorical_transformer, cat_cols)\n",
+        "    ]\n",
+        ")"
+      ],
+      "id": "6d77fa76",
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {},
+      "source": [
+        "# Splitting Data"
+      ],
+      "id": "a498ce1e"
+    },
+    {
+      "cell_type": "code",
+      "metadata": {},
+      "source": [
+        "X = movies_clean[cat_cols + num_cols]\n",
+        "y = movies_clean['target']\n",
+        "\n",
+        "X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=4025)"
+      ],
+      "id": "4fa3a840",
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {},
+      "source": [
+        "# Defining Models"
+      ],
+      "id": "ada09ce5"
+    },
+    {
+      "cell_type": "code",
+      "metadata": {},
+      "source": [
+        "dtc_pipeline = Pipeline(steps=[\n",
+        "    ('preprocessor', preprocessor),\n",
+        "    ('classifier', DecisionTreeClassifier(random_state=4025))\n",
+        "])\n",
+        "\n",
+        "#Fit pipeline\n",
+        "\n",
+        "dtc_pipeline.fit(X_train, y_train)\n",
+        "\n",
+        "#Create tree model\n",
+        "\n",
+        "tree_model = dtc_pipeline.named_steps['classifier']\n",
+        "feature_names = dtc_pipeline.named_steps['preprocessor'].get_feature_names_out()\n",
+        "\n",
+        "#Display model\n",
+        "\n",
+        "plt.figure(figsize=(20,10))\n",
+        "plot_tree(\n",
+        "    tree_model,\n",
+        "    feature_names = feature_names,\n",
+        "    class_names=['Failed', 'Passed'],\n",
+        "    filled=True,\n",
+        "    rounded=True,\n",
+        "    max_depth=3\n",
+        ")\n",
+        "\n",
+        "plt.show()"
+      ],
+      "id": "0c010082",
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "cell_type": "code",
+      "metadata": {},
+      "source": [
+        "rfc_pipeline = Pipeline(steps=[\n",
+        "    ('preprocessor', preprocessor),\n",
+        "    ('classifier', RandomForestClassifier(n_estimators=100, random_state=4025))\n",
+        "])\n",
+        "\n",
+        "rfc_pipeline.fit(X_train, y_train)"
+      ],
+      "id": "9c4c9ecb",
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "cell_type": "code",
+      "metadata": {},
+      "source": [
+        "xgb_pipeline = Pipeline(steps=[\n",
+        "    ('preprocessor', preprocessor),\n",
+        "    ('classifier', XGBClassifier(objective='multi:softmax', num_class=3))\n",
+        "])\n",
+        "\n",
+        "xgb_pipeline.set_params(classifier=GradientBoostingClassifier())\n",
+        "\n",
+        "xgb_pipeline.fit(X_train, y_train)"
+      ],
+      "id": "5d3880b9",
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {},
+      "source": [
+        "## Comparison BEFORE Tuning"
+      ],
+      "id": "a8f28a17"
+    },
+    {
+      "cell_type": "code",
+      "metadata": {},
+      "source": [
+        "def get_metrics(model, X, y):\n",
+        "    preds = model.predict(X)\n",
+        "    return {\n",
+        "        'Accuracy': accuracy_score(y, preds),\n",
+        "        'F1-Macro': f1_score(y, preds, average='macro'),\n",
+        "        'Precision (Pass)': precision_score(y, preds),\n",
+        "        'Recall (Pass)': recall_score(y, preds)\n",
+        "    }\n",
+        "\n",
+        "untuned_comparison = pd.DataFrame({\n",
+        "    'Decision Tree': get_metrics(dtc_pipeline, X_test, y_test),\n",
+        "    'Random Forest (Untuned)': get_metrics(rfc_pipeline, X_test, y_test),\n",
+        "    'XGBoost (Untuned)': get_metrics(xgb_pipeline, X_test, y_test)\n",
+        "}).T\n",
+        "\n",
+        "print(untuned_comparison.round(3))"
+      ],
+      "id": "2145e928",
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {},
+      "source": [
+        "# Tuning Models"
+      ],
+      "id": "a61f0207"
+    },
+    {
+      "cell_type": "code",
+      "metadata": {},
+      "source": [
+        "#Define grid\n",
+        "\n",
+        "param_grid = {\n",
+        "    'classifier__max_features': [None, 'sqrt', 'log2', 0.2, 0.5, 0.8]\n",
+        "}\n",
+        "\n",
+        "#Begin grid search\n",
+        "\n",
+        "cv_strategy1 = RepeatedStratifiedKFold(n_splits=5, n_repeats=3, random_state=4025)\n",
+        "\n",
+        "grid_search = GridSearchCV(\n",
+        "    estimator=rfc_pipeline, \n",
+        "    param_grid=param_grid, \n",
+        "    cv=cv_strategy1, \n",
+        "    scoring='accuracy',\n",
+        "    n_jobs=-1\n",
+        ")\n",
+        "\n",
+        "#Fit and print best scores and max features\n",
+        "\n",
+        "grid_search.fit(X_train, y_train)\n",
+        "\n",
+        "print(f\"Best Score: {grid_search.best_score_:.2%}\")\n",
+        "print(f\"Best max_features: {grid_search.best_params_['classifier__max_features']}\")"
+      ],
+      "id": "ccec4bdf",
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "cell_type": "code",
+      "metadata": {},
+      "source": [
+        "#Make stratified k fold and param grid, run grid search\n",
+        "\n",
+        "cv_strategy = RepeatedStratifiedKFold(n_splits=5, n_repeats=3, random_state=4025)\n",
+        "\n",
+        "param_grid = {\n",
+        "    'classifier__n_estimators': [50, 100, 200, 300],\n",
+        "    'classifier__learning_rate': [0.05, 0.1, 0.2]\n",
+        "}\n",
+        "\n",
+        "grid_search = GridSearchCV(\n",
+        "    estimator=xgb_pipeline, \n",
+        "    param_grid=param_grid, \n",
+        "    cv=cv_strategy, \n",
+        "    scoring='f1_macro', \n",
+        "    n_jobs=-1,\n",
+        "    verbose=1\n",
+        ")\n",
+        "\n",
+        "grid_search.fit(X_train, y_train)\n",
+        "\n",
+        "#Find best parameters and fit the best model\n",
+        "\n",
+        "print(f\"Best parameters: {grid_search.best_params_}\")"
+      ],
+      "id": "86533aa4",
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {},
+      "source": [
+        "# Generate Predictions"
+      ],
+      "id": "6a4637f1"
+    },
+    {
+      "cell_type": "code",
+      "metadata": {},
+      "source": [
+        "dtc_pred = dtc_pipeline.predict(X_test)\n",
+        "\n",
+        "best_rfc_model = grid_search.best_estimator_\n",
+        "best_rfc_pred = best_rfc_model.predict(X_test)\n",
+        "\n",
+        "best_xgb_model = grid_search.best_estimator_\n",
+        "best_xgb_pred = best_xgb_model.predict(X_test)"
+      ],
+      "id": "e89480f9",
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {},
+      "source": [
+        "# Model Comparison"
+      ],
+      "id": "b8548d2d"
+    },
+    {
+      "cell_type": "code",
+      "metadata": {},
+      "source": [
+        "tuned_comparison = pd.DataFrame({\n",
+        "    'Decision Tree': get_metrics(dtc_pipeline, X_test, y_test),\n",
+        "    'Random Forest (Tuned)': get_metrics(best_rfc_model, X_test, y_test),\n",
+        "    'XGBoost (Tuned)': get_metrics(best_xgb_model, X_test, y_test)\n",
+        "}).T\n",
+        "\n",
+        "print(tuned_comparison.round(3))"
+      ],
+      "id": "febbb681",
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {},
+      "source": [
+        "# Confusion Matrix for Best Model\n",
+        "\n",
+        "Choosing Random Forest for simplicity"
+      ],
+      "id": "bbbdab32"
+    },
+    {
+      "cell_type": "code",
+      "metadata": {},
+      "source": [
+        "cm = confusion_matrix(y_test, best_rfc_pred)\n",
+        "\n",
+        "fig, ax = plt.subplots(figsize=(8, 6))\n",
+        "disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=['FAIL', 'PASS'])\n",
+        "disp.plot(cmap='Blues', ax=ax, values_format='d')\n",
+        "plt.title('Confusion Matrix for Random Forest')\n",
+        "plt.grid(False)\n",
+        "plt.show()"
+      ],
+      "id": "968571fe",
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {},
+      "source": [
+        "# Conclusion"
+      ],
+      "id": "445cb3f3"
+    }
+  ],
+  "metadata": {
+    "kernelspec": {
+      "name": "python3",
+      "language": "python",
+      "display_name": "Python 3 (ipykernel)",
+      "path": "/Users/hannahmills/miniforge3/envs/math4025/share/jupyter/kernels/python3"
+    }
+  },
+  "nbformat": 4,
+  "nbformat_minor": 5
+}
