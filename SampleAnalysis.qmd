@@ -11,9 +11,13 @@ format:
 
 # Introduction
 
-For my 2026 Winter Term class, we had to do an individual project using a dataset to create interesting data visualizations and learning something new. I chose to take a movie dataset, and use the package plotly and create a shiny dashboard to analyze movies that pass what is known as the Bechdel test. Most importantly, disproving the fact that films containing significant female leads or characters tend to perform worse at a box office, or generate a lower ROI. 
+For my 2026 Winter Term class, we had to do an individual project using a dataset to create interesting data visualizations and learning something new. I chose to take a movie dataset, and use the package plotly and create a shiny dashboard to analyze movies that pass what is known as the Bechdel test. The Bechdel test is a simple way to gauge female representation and depth in movies, where a movie must satisy three criteria:
 
-For this sample analysis, I chose to expand on this by implementing machine learning techniques to predict whether a movie will or will not pass this test based on a series of features. 
+1.  There are at least two named women in the picture
+2.  They have a conversation with each other at some point
+3.  That conversation isn’t about a male character
+
+For this sample analysis, I chose to expand on this project by implementing machine learning techniques to predict whether a movie will or will not pass this test based on a series of features. This project has strengthened my ability to manipulate data and draw conclusions for a topic that I found interesting. 
 
 # Packages
 
@@ -37,11 +41,13 @@ from xgboost import XGBClassifier
 
 # Data Cleaning and Loading
 
-I loaded the dataset that I downloaded from FiveThirtyEight. I then dropped unneeded or unhelpful columns. Some of these columns included ID's or numbers, or columns that had too much text to be useful (plot, for example).
+I loaded the dataset that I downloaded from FiveThirtyEight. I then dropped unneeded or unhelpful columns. Some of these columns included ID's or numbers, or columns that had too much text to be useful (plot, for example). Additionally, I dropped columns that would essentially give away what I was trying to predict. 
 
-I additionally cleaned the runtime and imdb_votes column by dropping the word "min" and removing the comma, respectively.
+I cleaned the runtime and imdb_votes column by dropping the word "min" and removing the comma, respectively. 
 
-Finally, I mapped from the binary column 1 to passing and 0 to failing.
+I also split the genre and language column, so each genre and language could be evauluated separately, rather than as one variable. 
+
+Finally, I mapped the binary column to 0 for FAIL and 1 for PASS. 
 
 ```{python}
 # Load dataset
@@ -76,7 +82,7 @@ movies_final = pd.concat([movies_clean, genres_split, languages_split], axis=1)
 
 # Map PASS to 1 and FAIL to 0 
 
-movies_final['target'] = movies_final['binary'].map({'PASS': 1, 'FAIL': 0})
+movies_final['binary'] = movies_final['binary'].map({'PASS': 1, 'FAIL': 0})
 ```
 
 # Exploratory Data Analysis (EDA)
@@ -85,7 +91,7 @@ I then conducted an Exploratory Data Analysis, or EDA, to discover any patterns 
 
 Next, I made a line chart showing a trend of films that have passed the test, and how it has changed over time. 
 
-Finally, I created a bar chart to reveal any genre bias from the films, on whether or not that played a part in a film passing the test. As we can see, genre does seem to be a a predictor in this.
+Finally, I created a bar chart to reveal any genre bias from the films, on whether or not that played a part in a film passing the test.
 
 ```{python}
 # First let's take a count to ensure that our outcomes are somewhat balanced, which they are.
@@ -172,7 +178,7 @@ preprocessor = ColumnTransformer(
 
 # Splitting Data
 
-I then split my data using a training set of 80% and a teste set of 20%, and a random seed of 4025.
+I then split my data using a training set of 80% and a test set of 20%, and a random seed of 4025.
 
 ```{python}
 X = movies_final[cat_cols + num_cols]
@@ -183,7 +189,7 @@ X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_
 
 # Defining Models
 
-The first model I fit was a decision tree classifier. The second model I fit was a random forest classifier. And finally, I fit a XGBoost model. Before tuning, I then compared the three models. The XGBoost performed the best in all areas, aside from the Recall (Pass), where it was beat by the Random Forest. The primary metrics I used to evaluate were Accurary, F1-Macro, Precision, and Recall for the Pass rate.
+The first model I fit was a decision tree classifier. The second model I fit was a random forest classifier. And finally, I fit a XGBoost model. Before tuning, I then compared the three models. The XGBoost performed the best in all areas, aside from the Recall (Pass), where it was beat by the Random Forest. The primary metrics I used to evaluate were the Accurary Score, F1-Macro Score, and Precision and Recall for the Pass rate.
 
 ```{python}
 dtc_pipeline = Pipeline(steps=[
@@ -347,7 +353,7 @@ Using the same function from the untuned models, I then recalled this to evaluat
 
 The model performs very well with Precision and Accuracy, but struggles with Recall. So, what does this mean in the context of my project?
 
-A high precision score but low recall score indicates that this model is more conservative or picky with its choices. The high precision indicates that the model has high credibility that when it labels it as pass, it passes. On the other hand, it has low recall, meaning it is missing many films that do pass the test. When the model claims it passes, it's right about 73% of the time. However, of all the movies that do pass, it only found about 49%. 
+A high precision score but low recall score indicates that this model is more conservative or picky with its choices. The high precision indicates that the model has high credibility that when it labels it as pass, it passes. On the other hand, it has low recall, meaning it misses many films that do pass the test. When the model claims it passes, it's right about 73% of the time. However, of all the movies that do pass, it only found about 49%. 
 
 Using this, we can say that it is much easier to determine whether a movie is going to fail, than it is going to pass. It's quite accurate when labeling it as passing, but struggles to catch all movies. 
 
@@ -364,7 +370,7 @@ tuned_comparison = pd.DataFrame({
 print(tuned_comparison.round(3))
 ```
 
-# Confusion Matrix for Best Model
+# Confusion Matrix for Random Forest
 
 Choosing Random Forest for simplicity. I then created a confusion matrix which allows us to easily see what the model is predicting correctly. 
 
@@ -379,6 +385,36 @@ plt.grid(False)
 plt.show()
 ```
 
+# Feature Importance Chart for Random Forest
+
+Additionally, I created a feature importance chart for the Random Forest model, allowing us to easily see which features are significant in predicting its outcome.
+
+```{python}
+
+#Get feature names and calculate rf_importances
+
+feature_names = best_rfc_model.named_steps['preprocessor'].get_feature_names_out()
+rf_importances = best_rfc_model.named_steps['classifier'].feature_importances_
+
+#Create dataframe
+
+rf_imp_df = pd.DataFrame({'Feature': feature_names, 'Importance': rf_importances})
+rf_imp_df = rf_imp_df.sort_values(by='Importance', ascending=False)
+
+#Only keep top 10
+
+rf_imp_top10 = rf_imp_df.head(10)
+
+plt.figure(figsize=(10, 6))
+sns.barplot(x='Importance', y='Feature', data=rf_imp_top10, palette='magma')
+plt.title("Random Forest: Variable Importance")
+plt.show()
+```
+
 # Conclusion
 
-Ovearll, this Sample Analysis aimed to create a model that would predict whether a movie would pass or fail what is known as the Bechdel Test.  
+Overall, this Sample Analysis aimed to create a model that would predict whether a movie would pass or fail what is known as the Bechdel Test. Through the steps of data cleaning, preprocessing, model tuning and evaluation, and finally model selection, these steps were carefully chosen to demonstrate the best uses of Machine Learning. 
+
+The three models: Decision Tree, Random Forest, and XGBoost were all fit and compared using its Accuracy, F1-Macro, and Precision and Recall Score. The Random Forest and XGBoost models performed nearly the same after being tuned, and for simplicity sake, I chose the Random Forest Model to produce the Confusion Matrix. The Random Forest model was able to correctly identify 73% of passing movies.
+
+Using the feature importance chart, we can see that the most important features in predicting a movie's pass or fail are its number of IMDB votes, normalized 2013 budget, and release year. 
