@@ -17,11 +17,11 @@ For my 2026 Winter Term class, we had to do an individual project using a datase
 2.  They have a conversation with each other at some point
 3.  That conversation isn’t about a male character
 
-For this sample analysis, I chose to expand on this project by implementing machine learning techniques to predict whether a movie will or will not pass this test based on a series of features. This project has strengthened my ability to manipulate data and draw conclusions for a topic that I found interesting. I believe that by being able to analyze this, it can help detect patterns or relationships of variables such as budgets or ratings, that result.
+For this sample analysis, I chose to expand on this project by implementing machine learning techniques to predict whether a movie will or will not pass this test based on a series of features. This project has strengthened my ability to manipulate data and draw conclusions for a topic that I found interesting.
 
 # Packages
 
-The main packages used for this analysis includes pandas, numpy, seaborn, and importantly, sklearn. I also imported an xgboost package to run an XGB classifier which you'll see later.
+The main packages I used for this analysis includes pandas, numpy, seaborn, and importantly, sklearn. I also imported an xgboost package to run an XGB classifier which you'll see later.
 
 ```{python}
 import pandas as pd
@@ -205,9 +205,9 @@ The first model I fit was a decision tree classifier. The second model I fit was
 
  I chose the decision tree classifier as my baseline model, since it is a simple and interpretable model. Although it would likely not outperform the random forest or XGBoost, it is the easiest to read and explain.  
 
- The second model is the random forest model, which is like a decision tree, but now produces many decision trees and combines its results. 
+ The second model is the random forest model, which is like a decision tree, but now produces many decision trees and combines its predictions to produce an accurate and stable result. 
 
- The third model, XGBoost, is a sequential model that builds off its previous trees. 
+ The third model, XGBoost, is an ensemble model that sequentially builds trees, correcting the errors of the previous one. 
 
 ```{python}
 dtc_pipeline = Pipeline(steps=[
@@ -269,7 +269,7 @@ xgb_pipeline.fit(X_train, y_train)
 
 ## Comparison BEFORE Tuning
 
-The XGBoost performed the best in all areas, aside from the Recall (Pass), where it was beat by the Random Forest. The primary metrics I used to evaluate were the Accuracy Score, F1-Macro Score, and Precision and Recall for the Pass rate.
+The XGBoost performed the best in all areas, aside from the Recall (Pass), where it was beat by the Decision Tree. The primary metrics I used to evaluate were the Accuracy Score, F1-Macro Score, and Precision and Recall for the Pass rate.
 
 ```{python}
 
@@ -300,7 +300,7 @@ print(untuned_comparison.round(3))
 
 To tune the Random Forest and XGBoost models, I used a grid search to find the best parameters for the two models.
 
-I chose to do it based off the F1-Macro score as it provides a balance betwe
+I chose to do it based off the F1-Macro score as it provides a balance between the precision and recall score.
 
 ```{python}
 #| include: false
@@ -375,9 +375,9 @@ Using the same function from the untuned models, I then recalled this to evaluat
 
 The model performs very well with Precision and Accuracy, but struggles with Recall. So, what does this mean in the context of my project?
 
-A high precision score but low recall score indicates that this model is more conservative or picky with its choices. The high precision indicates that the model has high credibility that when it labels it as pass, it passes. On the other hand, it has low recall, meaning it misses many films that do pass the test. When the model claims it passes, it's right about 73% of the time. However, of all the movies that do pass, it only found about 49%. 
+A high precision score but low recall score indicates that this model is more conservative or picky with its choices. The high precision indicates that the model has high credibility that when it labels a movie as "pass", it passes. On the other hand, it has low recall, meaning it misses many films that do pass the test. When the model claims it passes, it's right about 73% of the time. However, of all the movies that do pass, it only found about 49%. 
 
-Using this, we can say that it is much easier to determine whether a movie is going to fail, than it is going to pass. It's quite accurate when labeling it as passing, but struggles to catch all movies. 
+Using this, we can say that it is much easier to determine whether a movie is going to fail, than it is going to pass. It's quite accurate when labeling it as passing, but struggles to catch all movies that do pass. 
 
 ```{python}
 
@@ -438,7 +438,7 @@ plt.show()
 
 This Sample Analysis aimed to create a model that would predict whether a movie would pass or fail what is known as the Bechdel Test. Through the steps of data cleaning, preprocessing, model tuning and evaluation, and finally model selection, these steps were carefully chosen to demonstrate the best uses of Machine Learning. 
 
-The three models: Decision Tree, Random Forest, and XGBoost were all fit and compared using its Accuracy, F1-Macro, and Precision and Recall Score. The Random Forest and XGBoost models performed nearly the same after being tuned, and for simplicity sake, I chose the Random Forest Model to produce the Confusion Matrix. The Random Forest model was able to correctly identify 73% of passing movies.
+The three models: Decision Tree, Random Forest, and XGBoost were all fit and compared using its Accuracy, F1-Macro, and Precision and Recall Score. The Random Forest and XGBoost models performed nearly the same after being tuned, and for simplicity sake, I chose the Random Forest Model to produce the Confusion Matrix and Feature Importance Chart. The Random Forest model was able to correctly identify 73% of passing movies.
 
 Using the feature importance chart, we can see that the most important features in predicting a movie's pass or fail are its number of IMDB votes, normalized 2013 budget, and release year. 
 
