@@ -2,4 +2,4 @@
 title: "About"
 ---
 
-About this site
+This Website contains my Resume, Cover Letter, and Sample Analysis.

@@ -10,7 +10,6 @@ website:
       - about.qmd
       - href: SampleAnalysis.qmd
         text: "Sample Analysis"
-    right:
       - text: "Resume"
         href: docs/NEWResume.pdf
       - text: "Cover Letter"

@@ -11,7 +11,7 @@ format:
 
 # Introduction
 
-For my 2026 Winter Term class, we had to do an individual project using a dataset to create interesting data visualizations and learning something new. I chose to take a movie dataset, and learned how to use the package plotly, as well as create a shiny dashboard, to analyze movies that pass what is known as the Bechdel test. The Bechdel test is a simple way to gauge female representation and depth in movies, where a movie must satisy three criteria:
+For my 2026 Winter Term class, we had to do an individual project using a dataset to create interesting data visualizations and learn something new. I chose to take a movie dataset, and learned how to use the package plotly, as well as create a shiny dashboard, to analyze movies that pass what is known as the Bechdel test. The Bechdel test is a simple way to gauge female representation and depth in movies, where a movie must satisy three criteria:
 
 1.  There are at least two named women in the picture
 2.  They have a conversation with each other at some point
@@ -96,6 +96,8 @@ Third, I made a line chart showing the pass rate of films, and how it has change
 Finally, I created a bar chart to reveal any genre bias from the films, on whether or not that played a part in a film passing the test.
 
 ```{python}
+#| warning: false
+
 # First let's take a count to ensure that our outcomes are somewhat balanced, which they are.
 
 sns.countplot(data=movies_clean, x='binary')
@@ -106,6 +108,7 @@ plt.grid(alpha=0.3)
 ```
 
 ```{python}
+#| warning: false
 
 #Then create a box plot to see if budget plays a significant role in prediction
 
