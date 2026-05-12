@@ -11,13 +11,13 @@ format:
 
 # Introduction
 
-For my 2026 Winter Term class, we had to do an individual project using a dataset to create interesting data visualizations and learning something new. I chose to take a movie dataset, and use the package plotly and create a shiny dashboard to analyze movies that pass what is known as the Bechdel test. The Bechdel test is a simple way to gauge female representation and depth in movies, where a movie must satisy three criteria:
+For my 2026 Winter Term class, we had to do an individual project using a dataset to create interesting data visualizations and learning something new. I chose to take a movie dataset, and learned how to use the package plotly, as well as create a shiny dashboard, to analyze movies that pass what is known as the Bechdel test. The Bechdel test is a simple way to gauge female representation and depth in movies, where a movie must satisy three criteria:
 
 1.  There are at least two named women in the picture
 2.  They have a conversation with each other at some point
 3.  That conversation isn’t about a male character
 
-For this sample analysis, I chose to expand on this project by implementing machine learning techniques to predict whether a movie will or will not pass this test based on a series of features. This project has strengthened my ability to manipulate data and draw conclusions for a topic that I found interesting. 
+For this sample analysis, I chose to expand on this project by implementing machine learning techniques to predict whether a movie will or will not pass this test based on a series of features. This project has strengthened my ability to manipulate data and draw conclusions for a topic that I found interesting. I believe that by being able to analyze this, it can help detect patterns or relationships of variables such as budgets or ratings, that result.
 
 # Packages
 
@@ -41,7 +41,7 @@ from xgboost import XGBClassifier
 
 # Data Cleaning and Loading
 
-I loaded the dataset that I downloaded from FiveThirtyEight. I then dropped unneeded or unhelpful columns. Some of these columns included ID's or numbers, or columns that had too much text to be useful (plot, for example). Additionally, I dropped columns that would essentially give away what I was trying to predict. 
+I loaded the dataset that I downloaded from FiveThirtyEight. I then dropped unneeded or unhelpful columns. Some of these columns included IDs, or columns that had too much text to be useful (plot, for example). Additionally, I dropped columns that would be too obvious in predicting its outcome (such as test and clean_test). 
 
 I cleaned the runtime and imdb_votes column by dropping the word "min" and removing the comma, respectively. 
 
@@ -87,9 +87,11 @@ movies_final['binary'] = movies_final['binary'].map({'PASS': 1, 'FAIL': 0})
 
 # Exploratory Data Analysis (EDA)
 
-I then conducted an Exploratory Data Analysis, or EDA, to discover any patterns or hidden relationships before we began building models. For example, by using the first graph to get a count of how many movies that pass or fail the test, we can see if we have any imbalanced classes. 
+I then conducted an Exploratory Data Analysis, or EDA, to discover any patterns or hidden relationships before we began building models. For the first plot, we can get a count of how many movies  pass or fail the test, seeing if there are any imbalanced classes. 
 
-Next, I made a line chart showing a trend of films that have passed the test, and how it has changed over time. 
+Second, I made a box plot to see if budget played a role in whether or not a film would pass or not.
+
+Third, I made a line chart showing the pass rate of films, and how it has changed over time. 
 
 Finally, I created a bar chart to reveal any genre bias from the films, on whether or not that played a part in a film passing the test.
 
@@ -101,6 +103,16 @@ plt.title('Bechdel Test Pass Rate', fontsize=14)
 plt.ylabel('Movie Count')
 plt.xlabel('Pass or Fail')
 plt.grid(alpha=0.3)
+```
+
+```{python}
+
+#Then create a box plot to see if budget plays a significant role in prediction
+
+sns.boxplot(data=movies_clean, x='binary', y='budget_2013', palette={'PASS': '#18bc9c', 'FAIL': '#e74c3c'})
+plt.yscale('log')
+plt.title('Budget Distribution by Bechdel Result (Log Scale)', fontsize=14)
+plt.ylabel('Budget (2013 Inflation-Adjusted)')
 ```
 
 ```{python}
@@ -133,7 +145,7 @@ genre_counts.columns = ['genre', 'count']
 
 #Filtering so that there are at least 20 movies in each genre
 genre_analysis = pd.merge(genre_stats, genre_counts, on='genre')
-genre_analysis = genre_analysis[genre_analysis['count'] > 20].sort_values('PASS', ascending=True)
+genre_analysis = genre_analysis[genre_analysis['count'] > 20].sort_values('PASS', ascending=True) #this dropped documentary and western
 
 sns.barplot(data=genre_analysis, y='genre', x='PASS', palette='viridis')
 plt.title('Bechdel Pass Rate by Genre (n > 20)', fontsize=14)
@@ -143,7 +155,7 @@ plt.ylabel('Genre')
 
 # Preprocessing
 
-For preprocessing, I first made a list of the categorical and numerical features. Then I made two separate transformers
+For preprocessing, I first made a list of the categorical and numerical features. Then I made two separate transformers.
 
 For the numerical transformer, it first imputes missing values with the median, log scales the budgets (since it can be from a big range), and finally, scales it, which isn't completely necessary, but doesn't hurt either.
 
@@ -182,14 +194,20 @@ I then split my data using a training set of 80% and a test set of 20%, and a ra
 
 ```{python}
 X = movies_final[cat_cols + num_cols]
-y = movies_final['target']
+y = movies_final['binary']
 
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=4025)
 ```
 
 # Defining Models
 
-The first model I fit was a decision tree classifier. The second model I fit was a random forest classifier. And finally, I fit a XGBoost model. Before tuning, I then compared the three models. The XGBoost performed the best in all areas, aside from the Recall (Pass), where it was beat by the Random Forest. The primary metrics I used to evaluate were the Accurary Score, F1-Macro Score, and Precision and Recall for the Pass rate.
+The first model I fit was a decision tree classifier. The second model I fit was a random forest classifier. And finally, I fit a XGBoost model. Before tuning, I then compared the three models.
+
+ I chose the decision tree classifier as my baseline model, since it is a simple and interpretable model. Although it would likely not outperform the random forest or XGBoost, it is the easiest to read and explain.  
+
+ The second model is the random forest model, which is like a decision tree, but now produces many decision trees and combines its results. 
+
+ The third model, XGBoost, is a sequential model that builds off its previous trees. 
 
 ```{python}
 dtc_pipeline = Pipeline(steps=[
@@ -251,6 +269,8 @@ xgb_pipeline.fit(X_train, y_train)
 
 ## Comparison BEFORE Tuning
 
+The XGBoost performed the best in all areas, aside from the Recall (Pass), where it was beat by the Random Forest. The primary metrics I used to evaluate were the Accuracy Score, F1-Macro Score, and Precision and Recall for the Pass rate.
+
 ```{python}
 
 #Create function that calcaulates the following scores from the models
@@ -278,13 +298,15 @@ print(untuned_comparison.round(3))
 
 # Tuning Models
 
-To tune the Random Forest and XGBoost models, I used a grid search. 
+To tune the Random Forest and XGBoost models, I used a grid search to find the best parameters for the two models.
+
+I chose to do it based off the F1-Macro score as it provides a balance betwe
 
 ```{python}
 #| include: false
 #Define grid
 
-param_grid = {
+param_grid1 = {
     'classifier__max_features': [None, 'sqrt', 'log2', 0.2, 0.5, 0.8]
 }
 
@@ -294,9 +316,9 @@ cv_strategy1 = RepeatedStratifiedKFold(n_splits=5, n_repeats=3, random_state=402
 
 grid_search = GridSearchCV(
     estimator=rfc_pipeline, 
-    param_grid=param_grid, 
+    param_grid=param_grid1, 
     cv=cv_strategy1, 
-    scoring='accuracy',
+    scoring='f1_macro',
     n_jobs=-1
 )
 
@@ -313,14 +335,14 @@ grid_search.fit(X_train, y_train)
 
 cv_strategy2 = RepeatedStratifiedKFold(n_splits=5, n_repeats=3, random_state=4025)
 
-param_grid = {
+param_grid2 = {
     'classifier__n_estimators': [50, 100, 200, 300],
     'classifier__learning_rate': [0.05, 0.1, 0.2]
 }
 
 grid_search = GridSearchCV(
     estimator=xgb_pipeline, 
-    param_grid=param_grid, 
+    param_grid=param_grid2, 
     cv=cv_strategy2, 
     scoring='f1_macro', 
     n_jobs=-1,
@@ -390,6 +412,7 @@ plt.show()
 Additionally, I created a feature importance chart for the Random Forest model, allowing us to easily see which features are significant in predicting its outcome.
 
 ```{python}
+#| warning: false
 
 #Get feature names and calculate rf_importances
 
@@ -413,8 +436,10 @@ plt.show()
 
 # Conclusion
 
-Overall, this Sample Analysis aimed to create a model that would predict whether a movie would pass or fail what is known as the Bechdel Test. Through the steps of data cleaning, preprocessing, model tuning and evaluation, and finally model selection, these steps were carefully chosen to demonstrate the best uses of Machine Learning. 
+This Sample Analysis aimed to create a model that would predict whether a movie would pass or fail what is known as the Bechdel Test. Through the steps of data cleaning, preprocessing, model tuning and evaluation, and finally model selection, these steps were carefully chosen to demonstrate the best uses of Machine Learning. 
 
 The three models: Decision Tree, Random Forest, and XGBoost were all fit and compared using its Accuracy, F1-Macro, and Precision and Recall Score. The Random Forest and XGBoost models performed nearly the same after being tuned, and for simplicity sake, I chose the Random Forest Model to produce the Confusion Matrix. The Random Forest model was able to correctly identify 73% of passing movies.
 
 Using the feature importance chart, we can see that the most important features in predicting a movie's pass or fail are its number of IMDB votes, normalized 2013 budget, and release year. 
+
+In conclusion, we can see that there are important predictors in determining whether a not a movie would pass the Bechdel test. Moving forward, being able to rerun this model with additional columns (such as gender of the director) and more recent films would provide an interesting insight into future steps. 
