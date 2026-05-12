@@ -1,5 +1,5 @@
 ---
-title: "Sample Analysis: The Bechdel Test (Expanded)"
+title: "Sample Analysis: The Bechdel Test (Revisited)"
 author: "Hannah Mills"
 date: "2026-05-11"
 format:
@@ -11,13 +11,9 @@ format:
 
 # Introduction
 
-For my 2026 Winter Term class, we had to do an individual project using a dataset to create interesting data visualizations and learning something new. I chose to take a movie dataset, and use plotly and a shiny dashboard to analyze movies that pass what is known as the Bechdel test. Most importantly, disproving the fact that films containing significant female leads or characters tend to perform worse at a box office, or generate a lower ROI. 
+For my 2026 Winter Term class, we had to do an individual project using a dataset to create interesting data visualizations and learning something new. I chose to take a movie dataset, and use the package plotly and create a shiny dashboard to analyze movies that pass what is known as the Bechdel test. Most importantly, disproving the fact that films containing significant female leads or characters tend to perform worse at a box office, or generate a lower ROI. 
 
 For this sample analysis, I chose to expand on this by implementing machine learning techniques to predict whether a movie will or will not pass this test based on a series of features. 
-
-# Dataset Variables
-
-
 
 # Packages
 
@@ -45,11 +41,9 @@ from xgboost import XGBClassifier
 
 I loaded the dataset that I downloaded from FiveThirtyEight. I then dropped unneeded or unhelpful columns. Some of these columns included ID's or numbers, or columns that had too much text to be useful (plot, for example).
 
-I also decided to drop rows with missing values. We have enough rows that we can drop them. This is important because you can't necessariy impute a rating or a budget, since they're so widespread. 
-
 I additionally cleaned the runtime and imdb_votes column by dropping the word "min" and removing the comma, respectively.
 
-Finally, I mapped from the binary column 1 to passing and 0 to failing
+Finally, I mapped from the binary column 1 to passing and 0 to failing.
 
 ```{python}
 # Load dataset
@@ -71,12 +65,29 @@ movies_clean = movies_clean.dropna(subset=['imdb_rating', 'genre', 'runtime'])
 movies_clean['runtime'] = movies_clean['runtime'].str.extract(r'(\d+)').astype(int)
 movies_clean['imdb_votes'] = movies_clean['imdb_votes'].str.replace(',', '').astype(float)
 
+#Split language and genre columns
+
+genres_split = movies_clean['genre'].str.get_dummies(sep=', ')
+languages_split = movies_clean['language'].str.get_dummies(sep=', ')
+
+genres_split = genres_split.add_prefix('genre_')
+languages_split = languages_split.add_prefix('lang_')
+
+# Concatenate them back to your main dataframe
+movies_final = pd.concat([movies_clean, genres_split, languages_split], axis=1)
+
 # Map PASS to 1 and FAIL to 0 
 
-movies_clean['target'] = movies_clean['binary'].map({'PASS': 1, 'FAIL': 0})
+movies_final['target'] = movies_final['binary'].map({'PASS': 1, 'FAIL': 0})
 ```
 
 # Exploratory Data Analysis (EDA)
+
+I then conducted an Exploratory Data Analysis, or EDA, to discover any patterns or hidden relationships before we began building models. For example, by using the first graph to get a count of how many movies that pass or fail the test, we can see if we have any imbalanced classes. 
+
+Next, I made a line chart showing a trend of films that have passed the test, and how it has changed over time. 
+
+Finally, I created a bar chart to reveal any genre bias from the films, on whether or not that played a part in a film passing the test. As we can see, genre does seem to be a a predictor in this.
 
 ```{python}
 # First let's take a count to ensure that our outcomes are somewhat balanced, which they are.
@@ -100,6 +111,8 @@ plt.grid(alpha=0.3)
 ```
 
 ```{python}
+#| warning: false
+
 genre_df = movies_clean.dropna(subset=['genre', 'binary']).copy()
 genre_df['genre'] = genre_df['genre'].str.split(', ')
 genre_exploded = genre_df.explode('genre')
@@ -119,8 +132,14 @@ plt.ylabel('Genre')
 
 # Preprocessing
 
+For preprocessing, I first made a list of the categorical and numerical features. Then I made two separate transformers
+
+For the numerical transformer, it first imputes missing values with the median, log scales the budgets (since it can be from a big range), and finally, scales it, which isn't completely necessary, but doesn't hurt either.
+
+For the categorical transformer, it imputes any missing values with the word "missing."
+
 ```{python}
-cat_cols = ['rated', 'language', 'country', 'genre']
+cat_cols = ['rated', 'country'] + list(genres_split.columns) + list(languages_split.columns)
 
 num_cols = ['year', 'budget_2013', 'domgross_2013', 'intgross_2013', 'metascore', 'imdb_rating', 'runtime', 'imdb_votes']
 
@@ -145,14 +164,18 @@ preprocessor = ColumnTransformer(
 
 # Splitting Data
 
+I then split my data using a training set of 80% and a teste set of 20%, and a random seed of 4025.
+
 ```{python}
-X = movies_clean[cat_cols + num_cols]
-y = movies_clean['target']
+X = movies_final[cat_cols + num_cols]
+y = movies_final['target']
 
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=4025)
 ```
 
 # Defining Models
+
+The first model I fit was a decision tree classifier. The second model I fit was a random forest classifier. And finally, I fit a XGBoost model. Before tuning, I then compared the three models. The XGBoost performed the best in all areas, aside from the Recall (Pass), where it was beat by the Random Forest. The primary metrics I used to evaluate were Accurary, F1-Macro, Precision, and Recall for the Pass rate.
 
 ```{python}
 dtc_pipeline = Pipeline(steps=[
@@ -185,6 +208,8 @@ plt.show()
 ```
 
 ```{python}
+#| include: false
+
 rfc_pipeline = Pipeline(steps=[
     ('preprocessor', preprocessor),
     ('classifier', RandomForestClassifier(n_estimators=100, random_state=4025))
@@ -194,6 +219,8 @@ rfc_pipeline.fit(X_train, y_train)
 ```
 
 ```{python}
+#| include: false
+
 xgb_pipeline = Pipeline(steps=[
     ('preprocessor', preprocessor),
     ('classifier', XGBClassifier(objective='multi:softmax', num_class=3))
@@ -227,6 +254,8 @@ print(untuned_comparison.round(3))
 
 # Tuning Models
 
+To tune the Random Forest and XGBoost models, I used a grid search. 
+
 ```{python}
 #Define grid
 
@@ -249,16 +278,13 @@ grid_search = GridSearchCV(
 #Fit and print best scores and max features
 
 grid_search.fit(X_train, y_train)
-
-print(f"Best Score: {grid_search.best_score_:.2%}")
-print(f"Best max_features: {grid_search.best_params_['classifier__max_features']}")
 ```
 
 
 ```{python}
 #Make stratified k fold and param grid, run grid search
 
-cv_strategy = RepeatedStratifiedKFold(n_splits=5, n_repeats=3, random_state=4025)
+cv_strategy2 = RepeatedStratifiedKFold(n_splits=5, n_repeats=3, random_state=4025)
 
 param_grid = {
     'classifier__n_estimators': [50, 100, 200, 300],
@@ -268,20 +294,18 @@ param_grid = {
 grid_search = GridSearchCV(
     estimator=xgb_pipeline, 
     param_grid=param_grid, 
-    cv=cv_strategy, 
+    cv=cv_strategy2, 
     scoring='f1_macro', 
     n_jobs=-1,
     verbose=1
 )
 
 grid_search.fit(X_train, y_train)
-
-#Find best parameters and fit the best model
-
-print(f"Best parameters: {grid_search.best_params_}")
 ```
 
 # Generate Predictions
+
+I then pulled the best model and parameters from the Random Forest and XGBoost model, and made predictions for the Decision Tree, Random Forest, and XGBoost model.
 
 ```{python}
 dtc_pred = dtc_pipeline.predict(X_test)
@@ -295,6 +319,8 @@ best_xgb_pred = best_xgb_model.predict(X_test)
 
 # Model Comparison
 
+Using the same function from the untuned models, I then recalled this to evaluate the now tuned models. Interestingly enough, the Random Forest and XGBoost models performed the same. 
+
 ```{python}
 tuned_comparison = pd.DataFrame({
     'Decision Tree': get_metrics(dtc_pipeline, X_test, y_test),
@@ -307,7 +333,7 @@ print(tuned_comparison.round(3))
 
 # Confusion Matrix for Best Model
 
-Choosing Random Forest for simplicity
+Choosing Random Forest for simplicity. I then created a confusion matrix which allows us to easily see what the model is predicting correctly. 
 
 ```{python}
 cm = confusion_matrix(y_test, best_rfc_pred)
@@ -321,3 +347,5 @@ plt.show()
 ```
 
 # Conclusion
+
+Ovearll, this Sample Analysis aimed to create a model that would predict whether a movie would pass or fail what is known as the Bechdel Test.  
